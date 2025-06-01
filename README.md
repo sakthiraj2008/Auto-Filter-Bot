@@ -26,7 +26,10 @@
 - [x] 𝑆𝑝𝑒𝑙𝑙𝑖𝑛𝑔 𝐶ℎ𝑒𝑐𝑘 𝐹𝑒𝑎𝑡𝑢𝑟𝑒
 - [x] 𝐴𝑢𝑡𝑜 𝐷𝑒𝑙𝑒𝑡𝑒
 - [x] 𝐴𝑛𝑑 𝑀𝑜𝑟𝑒...
-- [x] Demo Bot - <a href=https://t.me/HA_Auto_Filter_Test_Bot>Here</a>
+
+## Demo Bot
+* [Try this bot](https://t.me/HA_Auto_Filter_Test_Bot)
+* Here bot you can test features and more before deploy your own bot
 
 ## 𝐶𝑜𝑚𝑚𝑎𝑛𝑑𝑠
 ```
@@ -34,13 +37,8 @@
 • /index_channels - to check how many index channel id added.
 • /stats - to get bot status.
 • /ping - view bot's ping (latency)
-• /gofile - upload file to gofile.io
+• /img_2_link - upload image to uguu.se and get link
 • /settings - to change group settings as your wish.
-• /set_template - to set custom imdb template.
-• /set_caption - to set custom bot files caption.
-• /set_shortlink - group admin can set custom shortlink.
-• /get_custom_settings - to get your group settings details.
-• /set_welcome - to set custom new joined users welcome message for group.
 • /delete - to delete files using query.
 • /delete_all - to delete all indexed file.
 • /broadcast - to send message to all bot users.
@@ -48,7 +46,6 @@
 • /pin_broadcast - to send message as pin to all bot users.
 • /pin_grp_broadcast - to send message as pin to all groups.
 • /restart - to restart bot.
-• /set_tutorial - to set custom tutorial link in result page button.
 • /id - to check group or channel id.
 • /leave - to leave your bot from particular group.
 • /unban_grp - to enable group.
@@ -59,8 +56,6 @@
 • /chats - to get all groups.
 • /invite_link - to generate invite link.
 • /index - to index bot accessible channels.
-• /set_fsub - to set force subscribe channel.
-• /remove_fsub - to remove force subscribe channel.
 ```
 
 ## Variables
@@ -69,7 +64,8 @@
 * `API_ID`: Get this value from [telegram.org](https://my.telegram.org/apps)
 * `API_HASH`: Get this value from [telegram.org](https://my.telegram.org/apps)
 * `ADMINS`: ID of Admins. (Multiple admins can be used separated by space)
-* `DATABASE_URL`: MongoDB URL. Get this value from [MongoDB](https://www.mongodb.com). For more help watch this [video](https://youtu.be/1G1XwEOnxxo)
+* `FILES_DATABASE_URL`: MongoDB URL for 1st files database. Get this value from [MongoDB](https://www.mongodb.com). For more help watch this [video](https://youtu.be/1G1XwEOnxxo)
+* `DATA_DATABASE_URL`: for save user, group, etc data.
 * `LOG_CHANNEL` : A channel to log the activities of bot. add channel id and Make sure bot is an admin in the channel.
 * `SUPPORT_GROUP`: Add your support group id
 * `BIN_CHANNEL`: A channel to the stream and download feature, add channel id and make bot admin in channel.
@@ -155,8 +151,13 @@ sudo docker logs Auto-Filter-Bot
 * [![EvaMaria](https://img.shields.io/static/v1?label=EvaMaria&message=Developers&color=critical)](https://t.me/TeamEvamaria)
 * [![Hansaka](https://img.shields.io/static/v1?label=Hansaka&message=TG&color=critical)](https://t.me/Hansaka_Anuhas)
 
+## Donate
+* If you feel like showing your appreciation for this project, then how about buying me a coffee.
+
+<a href="https://www.buymeacoffee.com/hansakaanuhas" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
 ## Thanks To
-* [Pyrogram](https://github.com/pyrogram/pyrogram) and [PyroFork](https://github.com/Mayuri-Chan/pyrofork) For Telegram MTProto API Framework
+* [Hydrogram](https://github.com/hydrogram/hydrogram) For Telegram MTProto API Framework
 * [Contributors](https://github.com/HA-Bots/Auto-Filter-Bot/graphs/contributors) For free helps
 * And to everyone who helped
 

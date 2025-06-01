@@ -1,10 +1,9 @@
-from pyrogram.errors import UserNotParticipant, FloodWait
-from info import LONG_IMDB_DESCRIPTION, TIME_ZONE
+from hydrogram.errors import UserNotParticipant, FloodWait
+from info import LONG_IMDB_DESCRIPTION, ADMINS, IS_PREMIUM
 from imdb import Cinemagoer
 import asyncio
-from pyrogram.types import InlineKeyboardButton
-from pyrogram import enums
-import pytz
+from hydrogram.types import InlineKeyboardButton
+from hydrogram import enums
 import re
 from datetime import datetime
 from database.users_chats_db import db
@@ -29,30 +28,45 @@ class temp(object):
     BOT = None
     PREMIUM = {}
 
-async def is_subscribed(bot, query, channel):
+async def is_subscribed(bot, query):
     btn = []
-    for id in channel:
+    if await is_premium(query.from_user.id, bot):
+        return btn
+    stg = db.get_bot_sttgs()
+    if not stg or not stg.get('FORCE_SUB_CHANNELS'):
+        return btn
+    for id in stg.get('FORCE_SUB_CHANNELS').split(' '):
         chat = await bot.get_chat(int(id))
         try:
-            await bot.get_chat_member(id, query.from_user.id)
+            await bot.get_chat_member(int(id), query.from_user.id)
         except UserNotParticipant:
             btn.append(
-                [InlineKeyboardButton(f'Join {chat.title}', url=chat.invite_link)]
+                [InlineKeyboardButton(f'Join : {chat.title}', url=chat.invite_link)]
             )
-        except Exception as e:
-            pass
+    if stg and stg.get('REQUEST_FORCE_SUB_CHANNELS') and not db.find_join_req(query.from_user.id):
+        id = stg.get('REQUEST_FORCE_SUB_CHANNELS')
+        chat = await bot.get_chat(int(id))
+        try:
+            await bot.get_chat_member(int(id), query.from_user.id)
+        except UserNotParticipant:
+            url = await bot.create_chat_invite_link(int(id), creates_join_request=True)
+            btn.append(
+                [InlineKeyboardButton(f'Request : {chat.title}', url=url.invite_link)]
+            )
     return btn
 
 
-def upload_to_gofile(file_path):
-    url = "https://store1.gofile.io/uploadFile"
-    
-    with open(file_path, "rb") as file:
-        files = {"file": file}
-        response = requests.post(url, files=files)
+def upload_image(file_path):
+    with open(file_path, 'rb') as f:
+        files = {'files[]': f}
+        response = requests.post("https://uguu.se/upload", files=files)
 
-    if response.status_code == 200 and response.json()["status"] == "ok":
-        return response.json()["data"]["downloadPage"]
+    if response.status_code == 200:
+        try:
+            data = response.json()
+            return data['files'][0]['url'].replace('\\/', '/')
+        except Exception as e:
+            return None
     else:
         return None
 
@@ -158,6 +172,45 @@ async def update_verify_status(user_id, verify_token="", is_verified=False, link
     await db.update_verify_status(user_id, current)
 
     
+async def is_premium(user_id, bot):
+    if not IS_PREMIUM:
+        return True
+    if user_id in ADMINS:
+        return True
+    mp = db.get_plan(user_id)
+    if mp['premium']:
+        if mp['expire'] < datetime.now():
+            await bot.send_message(user_id, f"Your premium {mp['plan']} plan is expired in {mp['expire'].strftime('%Y.%m.%d %H:%M:%S')}, use /plan to activate new plan again")
+            mp['expire'] = ''
+            mp['plan'] = ''
+            mp['premium'] = False
+            db.update_plan(user_id, mp)
+            return False
+        return True
+    else:
+        return False
+
+
+async def check_premium(bot):
+    while True:
+        pr = [i for i in db.get_premium_users() if i['status']['premium']]
+        for p in pr:
+            mp = p['status']
+            if mp['expire'] < datetime.now():
+                try:
+                    await bot.send_message(
+                        p['id'],
+                        f"Your premium {mp['plan']} plan is expired in {mp['expire'].strftime('%Y.%m.%d %H:%M:%S')}, use /plan to activate new plan again"
+                    )
+                except Exception:
+                    pass
+                mp['expire'] = ''
+                mp['plan'] = ''
+                mp['premium'] = False
+                db.update_plan(p['id'], mp)
+        await asyncio.sleep(1200)
+
+
 async def broadcast_messages(user_id, message, pin):
     try:
         m = await message.copy(chat_id=user_id)
@@ -232,7 +285,7 @@ def get_readable_time(seconds):
     return result
 
 def get_wish():
-    time = datetime.now(TIME_ZONE)
+    time = datetime.now()
     now = time.strftime("%H")
     if now < "12":
         status = "ɢᴏᴏᴅ ᴍᴏʀɴɪɴɢ 🌞"

@@ -1,17 +1,20 @@
 import random
 import os
 import sys
-from pyrogram import Client, filters
-from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-from pyrogram.errors.exceptions.bad_request_400 import MessageTooLong
+from hydrogram import Client, filters, enums
+from hydrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ChatJoinRequest
+from hydrogram.errors.exceptions.bad_request_400 import MessageTooLong
 from info import ADMINS, LOG_CHANNEL, PICS, SUPPORT_LINK, UPDATES_LINK
 from database.users_chats_db import db
 from utils import temp, get_settings
 from Script import script
 
 
-@Client.on_chat_member_updated(filters.group)
+@Client.on_chat_member_updated()
 async def welcome(bot, message):
+    if message.chat.type not in [enums.ChatType.GROUP, enums.ChatType.SUPERGROUP]:
+        return
+    
     if message.new_chat_member and not message.old_chat_member:
         if message.new_chat_member.user.id == temp.ME:
             buttons = [[
@@ -202,7 +205,7 @@ async def list_users(bot, message):
     raju = await message.reply('Getting list of users')
     users = await db.get_all_users()
     out = "Users saved in database are:\n\n"
-    async for user in users:
+    for user in users:
         out += f"**Name:** {user['name']}\n**ID:** `{user['id']}`"
         if user['ban_status']['is_banned']:
             out += ' (Banned User)'
@@ -223,7 +226,7 @@ async def list_chats(bot, message):
     raju = await message.reply('Getting list of chats')
     chats = await db.get_all_chats()
     out = "Chats saved in database are:\n\n"
-    async for chat in chats:
+    for chat in chats:
         out += f"**Title:** {chat['title']}\n**ID:** `{chat['id']}`"
         if chat['chat_status']['is_disabled']:
             out += ' (Disabled Chat)'
@@ -238,3 +241,15 @@ async def list_chats(bot, message):
         os.remove('chats.txt')
 
 
+@Client.on_chat_join_request()
+async def join_reqs(client, message: ChatJoinRequest):
+    stg = db.get_bot_sttgs()
+    if message.chat.id == int(stg.get('REQUEST_FORCE_SUB_CHANNELS')):
+        if not db.find_join_req(message.from_user.id):
+            db.add_join_req(message.from_user.id)
+
+
+@Client.on_message(filters.command("delreq") & filters.private & filters.user(ADMINS))
+async def del_requests(client, message):
+    db.del_join_req()
+    await message.reply('Deleted join requests')

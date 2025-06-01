@@ -1,10 +1,6 @@
-Pyrofork
+hydrogram
 tgcrypto
-motor
-marshmallow
-umongo
 pymongo
-pytz
 cinemagoer
 shortzy
 aiohttp
@@ -12,3 +8,5 @@ aiofiles
 speedtest-cli
 uvloop
 requests
+qrcode
+Pillow

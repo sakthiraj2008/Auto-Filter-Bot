@@ -2,104 +2,83 @@ import logging
 from struct import pack
 import re
 import base64
-from pyrogram.file_id import FileId
-from pymongo.errors import DuplicateKeyError, OperationFailure 
-from umongo import Instance, Document, fields
-from motor.motor_asyncio import AsyncIOMotorClient
-from marshmallow.exceptions import ValidationError
-from info import USE_CAPTION_FILTER, DATABASE_URL, SECOND_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME, MAX_BTN
+from hydrogram.file_id import FileId
+from pymongo import MongoClient, TEXT
+from pymongo.errors import DuplicateKeyError, OperationFailure
+from info import USE_CAPTION_FILTER, FILES_DATABASE_URL, SECOND_FILES_DATABASE_URL, DATABASE_NAME, COLLECTION_NAME, MAX_BTN
 
-client = AsyncIOMotorClient(DATABASE_URL)
+logger = logging.getLogger(__name__)
+
+client = MongoClient(FILES_DATABASE_URL)
 db = client[DATABASE_NAME]
-instance = Instance.from_db(db)
+collection = db[COLLECTION_NAME]
+try:
+    collection.create_index([("file_name", TEXT)])
+except OperationFailure as e:
+    if 'quota' in str(e).lower():
+        if not SECOND_FILES_DATABASE_URL:
+            logger.error(f'your FILES_DATABASE_URL is already full, add SECOND_FILES_DATABASE_URL')
+        else:
+            logger.info('FILES_DATABASE_URL is full, now using SECOND_FILES_DATABASE_URL')
+    else:
+        logger.exception(e)
 
-@instance.register
-class Media(Document):
-    file_id = fields.StrField(attribute='_id')
-    file_name = fields.StrField(required=True)
-    file_size = fields.IntField(required=True)
-    caption = fields.StrField(allow_none=True)
-
-    class Meta:
-        indexes = ('$file_name', )
-        collection_name = COLLECTION_NAME
-        strict = False
-
-
-
-#second db
-if SECOND_DATABASE_URL:
-    second_client = AsyncIOMotorClient(SECOND_DATABASE_URL)
+if SECOND_FILES_DATABASE_URL:
+    second_client = MongoClient(SECOND_FILES_DATABASE_URL)
     second_db = second_client[DATABASE_NAME]
-    second_instance = Instance.from_db(second_db)
-
-    @second_instance.register
-    class SecondMedia(Document):
-
-        file_id = fields.StrField(attribute='_id')
-        file_name = fields.StrField(required=True)
-        file_size = fields.IntField(required=True)
-        caption = fields.StrField(allow_none=True)
-
-        class Meta:
-             indexes = ('$file_name', )
-             collection_name = COLLECTION_NAME
-             strict = False
+    second_collection = second_db[COLLECTION_NAME]
+    second_collection.create_index([("file_name", TEXT)])
 
 
+def second_db_count_documents():
+     return second_collection.count_documents({})
+
+def db_count_documents():
+     return collection.count_documents({})
 
 
 async def save_file(media):
     """Save file in database"""
-
-    # TODO: Find better way to get same file_id for same media to avoid duplicates
     file_id = unpack_new_file_id(media.file_id)
     file_name = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.file_name))
     file_caption = re.sub(r"@\w+|(_|\-|\.|\+)", " ", str(media.caption))
+    
+    document = {
+        '_id': file_id,
+        'file_name': file_name,
+        'file_size': media.file_size,
+        'caption': file_caption
+    }
+    
     try:
-        file = Media(
-            file_id=file_id,
-            file_name=file_name,
-            file_size=media.file_size,
-            caption=file_caption
-        )
-    except ValidationError:
-        print(f'Saving Error - {file_name}')
-        return 'err'
-    else:
-        try:
-            await file.commit()
-        except DuplicateKeyError:      
-            print(f'Already Saved - {file_name}')
-            return 'dup'
-        except OperationFailure: #if 1st db is full
-            if SECOND_DATABASE_URL:
-                file = SecondMedia(
-                    file_id=file_id,
-                    file_name=file_name,
-                    file_size=media.file_size,
-                    caption=file_caption
-                    )
-                try:
-                    await file.commit()
-                    print(f'Saved to 2nd db - {file_name}')
-                    return 'suc'
-                except DuplicateKeyError:
-                    print(f'Already Saved in 2nd db - {file_name}')
-                    return 'dup'
+        collection.insert_one(document)
+        logger.info(f'Saved - {file_name}')
+        return 'suc'
+    except DuplicateKeyError:
+        logger.warning(f'Already Saved - {file_name}')
+        return 'dup'
+    except OperationFailure:
+        if SECOND_FILES_DATABASE_URL:
+            try:
+                second_collection.insert_one(document)
+                logger.info(f'Saved to 2nd db - {file_name}')
+                return 'suc'
+            except DuplicateKeyError:
+                logger.warning(f'Already Saved in 2nd db - {file_name}')
+                return 'dup'
         else:
-            print(f'Saved - {file_name}')
-            return 'suc'
+            logger.error(f'your FILES_DATABASE_URL is already full, add SECOND_FILES_DATABASE_URL')
+            return 'err'
 
 async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
-    query = str(query) # to ensure the query is string to stripe.
-    query = query.strip()
+    query = str(query).strip()
     if not query:
         raw_pattern = '.'
     elif ' ' not in query:
         raw_pattern = r'(\b|[\.\+\-_])' + query + r'(\b|[\.\+\-_])'
     else:
-        raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]') 
+        raw_pattern = query.replace(' ', r'.*[\s\.\+\-_]')
+    
     try:
         regex = re.compile(raw_pattern, flags=re.IGNORECASE)
     except:
@@ -110,24 +89,21 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     else:
         filter = {'file_name': regex}
 
-    cursor = Media.find(filter)
-    results = [doc async for doc in cursor]
+    cursor = collection.find(filter)
+    results = [doc for doc in cursor]
 
-    if SECOND_DATABASE_URL:
-        cursor2 = SecondMedia.find(filter)
-        results.extend([doc async for doc in cursor2])
-
-
+    if SECOND_FILES_DATABASE_URL:
+        cursor2 = second_collection.find(filter)
+        results.extend([doc for doc in cursor2])
 
     if lang:
-        lang_files = [file for file in results if lang in file.file_name.lower()]
+        lang_files = [file for file in results if lang in file['file_name'].lower()]
         files = lang_files[offset:][:max_results]
         total_results = len(lang_files)
         next_offset = offset + max_results
         if next_offset >= total_results:
             next_offset = ''
         return files, next_offset, total_results
-        
 
     total_results = len(results)
     files = results[offset:][:max_results]
@@ -135,8 +111,7 @@ async def get_search_results(query, max_results=MAX_BTN, offset=0, lang=None):
     if next_offset >= total_results:
         next_offset = ''   
     return files, next_offset, total_results
-    
-    
+
 async def delete_files(query):
     query = query.strip()
     if not query:
@@ -150,16 +125,26 @@ async def delete_files(query):
         regex = re.compile(raw_pattern, flags=re.IGNORECASE)
     except:
         regex = query
+        
     filter = {'file_name': regex}
-    total = await Media.count_documents(filter)
-    files = Media.find(filter)
-    return total, files
+    
+    result1 = collection.delete_many(filter)
+    
+    result2 = None
+    if SECOND_FILES_DATABASE_URL:
+        result2 = second_collection.delete_many(filter)
+    
+    total_deleted = result1.deleted_count
+    if result2:
+        total_deleted += result2.deleted_count
+    
+    return total_deleted
 
 async def get_file_details(query):
-    filter = {'file_id': query}
-    cursor = Media.find(filter)
-    filedetails = await cursor.to_list(length=1)
-    return filedetails
+    file_details = collection.find_one({'_id': query})
+    if not file_details and SECOND_FILES_DATABASE_URL:
+        file_details = second_collection.find_one({'_id': query})
+    return file_details
 
 def encode_file_id(s: bytes) -> str:
     r = b""
@@ -171,7 +156,6 @@ def encode_file_id(s: bytes) -> str:
             if n:
                 r += b"\x00" + bytes([n])
                 n = 0
-
             r += bytes([i])
     return base64.urlsafe_b64encode(r).decode().rstrip("=")
 

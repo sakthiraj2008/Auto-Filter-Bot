@@ -1,25 +1,25 @@
+import logging
+logging.basicConfig(
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+logging.getLogger('hydrogram').setLevel(logging.ERROR)
+logger = logging.getLogger(__name__)
+
 import os
 import time
 import asyncio
 import uvloop
-
-# pyrogram imports
-from pyrogram import types
-from pyrogram import Client
-from pyrogram.errors import FloodWait
-
-# aiohttp imports
+from hydrogram import types
+from hydrogram import Client
+from hydrogram.errors import FloodWait
 from aiohttp import web
 from typing import Union, Optional, AsyncGenerator
-
-# local imports
 from web import web_app
-from info import LOG_CHANNEL, API_ID, API_HASH, BOT_TOKEN, PORT, BIN_CHANNEL, ADMINS, SECOND_DATABASE_URL, DATABASE_URL
-from utils import temp, get_readable_time
-
-# pymongo and database imports
+from info import INDEX_CHANNELS, SUPPORT_GROUP, LOG_CHANNEL, API_ID, DATA_DATABASE_URL, API_HASH, BOT_TOKEN, PORT, BIN_CHANNEL, ADMINS, SECOND_FILES_DATABASE_URL, FILES_DATABASE_URL
+from utils import temp, get_readable_time, check_premium
 from database.users_chats_db import db
-from database.ia_filterdb import Media
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 
@@ -36,32 +36,11 @@ class Bot(Client):
         )
 
     async def start(self):
-        try:
-            await super().start()
-        except FloodWait as e:
-            time_ = get_readable_time(e.value)
-            print(f"Warning - Flood Wait Occured, Wait For: {time_}")
-            asyncio.sleep(e.value)
-            print("Info - Now Ready For Deploying !")
+        await super().start()
         temp.START_TIME = time.time()
         b_users, b_chats = await db.get_banned()
         temp.BANNED_USERS = b_users
         temp.BANNED_CHATS = b_chats
-        client = MongoClient(DATABASE_URL, server_api=ServerApi('1'))
-        try:
-            client.admin.command('ping')
-            print("Info - Successfully connected to DATABASE_URL")
-        except Exception as e:
-            print("Error - Make sure DATABASE_URL is correct, exiting now")
-            exit()
-        if SECOND_DATABASE_URL:
-            client2 = MongoClient(SECOND_DATABASE_URL, server_api=ServerApi('1'))
-            try:
-                client2.admin.command('ping')
-                print("Info - Successfully connected to SECOND_DATABASE_URL")
-            except:
-                print("Error - Make sure SECOND_DATABASE_URL is correct, exiting now")
-                exit()
 
         if os.path.exists('restart.txt'):
             with open("restart.txt") as file:
@@ -71,41 +50,32 @@ class Bot(Client):
             except:
                 pass
             os.remove('restart.txt')
+
         temp.BOT = self
-        await Media.ensure_indexes()
         me = await self.get_me()
         temp.ME = me.id
         temp.U_NAME = me.username
         temp.B_NAME = me.first_name
-        username = '@' + me.username
-        print(f"{me.first_name} is started now 🤗 (DC ID - {me.dc_id})")
+        
         app = web.AppRunner(web_app)
         await app.setup()
         await web.TCPSite(app, "0.0.0.0", PORT).start()
+
+        asyncio.create_task(check_premium(self))
         try:
             await self.send_message(chat_id=LOG_CHANNEL, text=f"<b>{me.mention} Restarted! 🤖</b>")
         except:
-            print("Error - Make sure bot admin in LOG_CHANNEL, exiting now")
+            logger.error("Make sure bot admin in LOG_CHANNEL, exiting now")
             exit()
-        try:
-            m = await self.send_message(chat_id=BIN_CHANNEL, text="Test")
-            await m.delete()
-        except:
-            print("Error - Make sure bot admin in BIN_CHANNEL, exiting now")
-            exit()
-        for admin in ADMINS:
-            try:
-                await self.send_message(chat_id=admin, text="<b>✅ ʙᴏᴛ ʀᴇsᴛᴀʀᴛᴇᴅ</b>")
-            except:
-                print(f"Info - Admin ({admin}) not started this bot yet")
+        logger.info(f"@{me.username} is started now ✓")
 
     async def stop(self, *args):
         await super().stop()
-        print("Bot Stopped! Bye...")
+        logger.info("Bot Stopped! Bye...")
 
     async def iter_messages(self: Client, chat_id: Union[int, str], limit: int, offset: int = 0) -> Optional[AsyncGenerator["types.Message", None]]:
         """Iterate through a chat sequentially.
-        This convenience method does the same as repeatedly calling :meth:`~pyrogram.Client.get_messages` in a loop, thus saving
+        This convenience method does the same as repeatedly calling :meth:`~hydrogram.Client.get_messages` in a loop, thus saving
         you from the hassle of setting up boilerplate code. It is useful for getting the whole chat messages with a
         single call.
         Parameters:
@@ -121,10 +91,10 @@ class Bot(Client):
                 Identifier of the first message to be returned.
                 Defaults to 0.
         Returns:
-            ``Generator``: A generator yielding :obj:`~pyrogram.types.Message` objects.
+            ``Generator``: A generator yielding :obj:`~hydrogram.types.Message` objects.
         Example:
             .. code-block:: python
-                async for message in app.iter_messages("pyrogram", 1000, 100):
+                async for message in app.iter_messages("HA_Bots", 1000, 100):
                     print(message.text)
         """
         current = offset
